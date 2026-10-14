@@ -86,4 +86,4 @@ Model availability and image generation access depend on the configured OpenAI p
 
 ## Remaining launch work
 
-Configure and verify live AI access, grant real reviewers Site access, supply authentic clinic photography and complete biographies, and verify clinic information. Later, connect the clinic's social accounts and implement provider-specific scheduling, publication receipts and analytics. No posts are sent by this version.
+Live text and image generation have been confirmed by the owner. Clinic information has been cross-checked against the original website (see docs/content-verification.json); the clinic must confirm that it remains current. Grant real reviewers Site access and supply authentic clinic photography and approved biographies. Later, connect the clinic's social accounts and implement provider-specific scheduling, publication receipts and analytics. No posts are sent by this version.
