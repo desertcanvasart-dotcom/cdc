@@ -1,63 +1,89 @@
 # Clinique du Caire
 
-A bilingual clinic website and a first-phase marketing workspace, built with HTML, CSS and JavaScript. No package installation or build is needed.
+Bilingual clinic website and a shared marketing workspace built with Vinext, Cloudflare D1 and R2. Social accounts can be linked later; no publishing integration is enabled in this version.
 
-## Run locally
+## What works
 
-Requires Node.js 18 or later.
+- Existing English/Arabic website, treatment and doctor discovery, unit-specific directions, FAQs and WhatsApp visit planning.
+- Shared drafts, calendar preferences, audit history and optimistic concurrency checks.
+- Owner, editor and reviewer roles enforced by the API.
+- Signed-in review decisions, required clinical/factual/artwork checks and approval reset after edits.
+- Server-side OpenAI text and image generation endpoints, strict draft output validation, recorded generation jobs, duplicate-request protection and daily per-user limits.
+- Generated artwork stored in R2 and served only to workspace members.
+- Caption and PNG exports, backups and browser-draft imports. Imports create new drafts and require review.
+
+**Live AI generation requires a configured `OPENAI_API_KEY`.** Without it, the workspace explicitly disables live generation while template drafts and reviews remain available. Tests use isolated storage and mocked provider responses; they do not prove live model access or billing readiness.
+
+**Social publishing, social scheduling and performance analytics remain deferred.** Planned dates and calendar exports do not schedule posts. Booking still prepares a WhatsApp request and does not reserve an appointment.
+
+## Local setup
+
+Requires Node.js 24 (minimum supported runtime is Node.js 22.13).
 
 ```sh
-npm start
+npm run install:ci
+cp .dev.vars.example .dev.vars
+npm run build
+npm run db:local
+npm run dev
 ```
 
-- Website: http://127.0.0.1:4173/
-- Marketing Studio: http://127.0.0.1:4173/studio/
-- Syntax checks: `npm run check`
+Open http://127.0.0.1:5173/studio/, use Sign in with ChatGPT (local mock user `seedy@sites.test`), then Initialize workspace. This imports the 12 starter drafts once. The mock sign-in is local-only and excluded from production.
 
-The preview server binds to localhost. Set `PORT` to choose another port.
+If your local database was manually initialized previously, do not replay those SQL files. The local migration helper tracks files applied through that helper in a local-only ledger. Hosted migrations are applied by the Sites publishing workflow and do not use this local ledger.
 
-## Website
+```sh
+npm run check
+npm test
+```
 
-English and Arabic layouts; treatment filtering; doctor search and profiles; branch-specific contacts and directions; insurance information; FAQs; and a guided visit planner. Booking prepares a WhatsApp message for the visitor to review and send. It does not reserve appointments or write to a booking database.
+The tests exercise real isolated Miniflare D1/R2 storage with mocked AI responses. Production and local databases are separate.
 
-The reception guide provides predefined clinic information rather than live AI chat. Doctor portraits and full biographies remain to be supplied. The homepage uses labeled illustrative imagery rather than an authentic clinic photograph.
+## Runtime configuration
 
-## Marketing Studio
+Store runtime values with the hosting service, never in browser code, Git or `.openai/hosting.json`:
 
-- Twelve AI-authored bilingual starter campaign drafts, with proposed dates beginning 15 October 2026.
-- Editable captions, headlines, platform, planned date/time and creative direction.
-- Content calendar and local approval queue.
-- Review checks, notes and decision history; edits reset approval.
-- 1080 × 1080 PNG exports, caption CSVs, JSON backups and approved calendar tasks.
-- Campaign links point to the existing clinic website, with UTM parameters.
+| Variable | Purpose |
+| --- | --- |
+| `CDC_OWNER_EMAIL` | Trusted owner's signed-in email; required to initialize the owner role. |
+| `OPENAI_API_KEY` | Secret enabling live generation. |
+| `AI_TEXT_MODEL` | Text model; defaults to `gpt-5-mini`. |
+| `AI_IMAGE_MODEL` | Image model; defaults to `gpt-image-2`. |
 
-New drafts use templates. Live AI generation, shared storage, automated scheduling, social publishing and performance analytics are **not implemented**. Planned dates do not schedule external posts, and approval does not publish content.
+The Site declares logical `DB` and `BUCKET` bindings. A deployed Site retains its existing project ID and private audience; the generic repository manifest deliberately excludes the current deployment identity. Use the Sites workflow to associate the checkout with the existing project before deploying. Do not create a replacement Site.
 
-Drafts and review records are saved in browser localStorage. They are not shared across devices or reviewers. Imported backups require fresh review. Export a backup before moving between origins or devices.
+## Access model
 
-## Next implementation phase
+Production authentication is provided by the Sites gateway. The API trusts its injected user ID/email headers. Do not expose the Worker directly behind an untrusted gateway that lets callers forge these headers.
 
-1. Add a server-side AI service using securely configured runtime credentials.
-2. Add authenticated shared storage and reviewer roles.
-3. Connect the clinic's Facebook and Instagram accounts through a supported publishing provider, such as Metricool.
-4. Implement publication with provider receipts, duplicate prevention, error recovery and audit records.
-5. Add reporting from real provider analytics.
+The configured owner initializes the workspace. The owner can assign editor/reviewer roles by email; colleagues must separately receive access to the private Site, sign in, and accept their assigned workspace role. Assigning a role does not send invitation email or alter hosting access. The owner can revoke workspace roles.
 
-Publishing must verify the intended clinic account. Never mark a post published without a successful provider response and a post identifier. Clinical wording requires qualified review; patient imagery requires permission. Do not invent credentials, testimonials, prices or treatment outcomes.
+- Owner: edit drafts, review, and manage roles.
+- Editor: create/edit drafts, request generation and submit for review.
+- Reviewer: read drafts and approve or request changes.
+
+A version check prevents stale writes from replacing another person's edits. Reviewer identity comes from the authenticated account, not a typed name. Review checkboxes record an attestation; the application does not independently verify a clinician's credentials.
+
+## AI workflow and limits
+
+An explicit user request creates one draft or one image. Text generation receives only the selected verified clinic topic and the creative brief. Output is validated and always starts Draft. Images are illustrative brand artwork; never fabricate patient results, clinic photographs or doctor portraits.
+
+Generation jobs use unique request IDs. Reusing an identical completed request returns its saved result; pending, failed or uncertain requests are not automatically replayed. After a timeout, use Recent AI requests before initiating another request. Default limits are ten text generations and five image generations per user per UTC day. These limits complement provider billing controls; they do not set a monetary spending limit.
+
+If a draft changes while artwork is generated, the new image is retained in the request history without overwriting the draft. Artwork attachment also resets review. Workspace capacity is 500 drafts; imports are capped at 50 and are transactional.
+
+Model availability and image generation access depend on the configured OpenAI project. API integration references: [structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) and [image generation](https://developers.openai.com/api/docs/guides/image-generation).
 
 ## Files
 
-- `index.html`, `style.css`, `app.js`: patient-facing website.
-- `studio/`: marketing workspace, starter content and interactions.
-- `assets/campaign-care.png`: AI-generated illustrative brand artwork, not a clinic photograph.
-- `tools/serve.mjs`: dependency-free local preview server.
+- `public/`: preserved website and marketing UI, with assets.
+- `app/`: HTML entry routes and protected studio API route.
+- `lib/marketing/core.mjs`: authentication, roles, draft/review state, generation and storage.
+- `lib/marketing/knowledge.json`: curated clinic topics and starter campaign.
+- `db/schema.ts`, `drizzle/`: schema and append-only migration history.
+- `tests/marketing.test.mjs`: backend integration tests.
+- `build/`, `scripts/`: maintained Sites runtime/build support.
 
-## Deployment and access
+## Remaining launch work
 
-Serve the repository root with any static host. Keep `/studio/` behind appropriate authentication when deploying publicly; its `noindex` metadata is not access control. The current Sites deployment is owner-private. Its hosting identity and credentials are intentionally excluded from this public repository.
-
-The current app uses hash-based routes. Search-indexable treatment URLs and a production backend remain part of the next implementation phase. Fonts load from Google Fonts and the website's illustrative photo loads from Unsplash.
-
-## Content sources
-
-Clinic information was reviewed from https://cliniqueducaire.com/en and its linked services, doctors, branches, insurance, FAQ, contact and booking pages on 14 October 2026. Verify operational information with the clinic before launch. The starter content is a draft campaign, not an approved or published campaign.
+Configure and verify live AI access, grant real reviewers Site access, supply authentic clinic photography and complete biographies, and verify clinic information. Later, connect the clinic's social accounts and implement provider-specific scheduling, publication receipts and analytics. No posts are sent by this version.

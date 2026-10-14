@@ -1,0 +1,6 @@
+# Local-only mock sign-in supplied by the Sites starter.
+CDC_OWNER_EMAIL=seedy@sites.test
+AI_TEXT_MODEL=gpt-5-mini
+AI_IMAGE_MODEL=gpt-image-2
+# Optional: configure your own key through a secure local environment.
+# OPENAI_API_KEY=
